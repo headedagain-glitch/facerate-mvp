@@ -52,7 +52,8 @@ export const KEY_LANDMARKS = {
 
 const MODEL_ASSET =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
-const WASM_ASSET = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm";
+const WASM_ASSET = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
+const MEDIAPIPE_NOISY_CONSOLE_MESSAGES = ["INFO: Created TensorFlow Lite XNNPACK delegate for CPU."];
 
 export function mapLandmarkToPixel(
   landmark: NormalizedLandmark,
@@ -76,25 +77,57 @@ export function distance(a: PixelPoint, b: PixelPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function shouldSuppressMediaPipeConsoleError(args: Parameters<typeof console.error>): boolean {
+  const message = args.map((arg) => (typeof arg === "string" ? arg : "")).join(" ");
+  return MEDIAPIPE_NOISY_CONSOLE_MESSAGES.some((noisyMessage) => message.includes(noisyMessage));
+}
+
+function withMediaPipeConsoleErrorFilter<T>(operation: () => T): T {
+  const originalConsoleError = console.error;
+  console.error = (...args: Parameters<typeof console.error>) => {
+    if (shouldSuppressMediaPipeConsoleError(args)) return;
+    originalConsoleError(...args);
+  };
+
+  try {
+    return operation();
+  } finally {
+    console.error = originalConsoleError;
+  }
+}
+
+async function withMediaPipeConsoleErrorFilterAsync<T>(operation: () => Promise<T>): Promise<T> {
+  const originalConsoleError = console.error;
+  console.error = (...args: Parameters<typeof console.error>) => {
+    if (shouldSuppressMediaPipeConsoleError(args)) return;
+    originalConsoleError(...args);
+  };
+
+  try {
+    return await operation();
+  } finally {
+    console.error = originalConsoleError;
+  }
+}
+
 export async function loadFaceLandmarker(): Promise<MediaPipeFaceLandmarker> {
   if (!landmarkerPromise) {
-    landmarkerPromise = import("@mediapipe/tasks-vision").then(
-      async ({ FaceLandmarker, FilesetResolver }) => {
-        const vision = await FilesetResolver.forVisionTasks(WASM_ASSET);
-        return FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: MODEL_ASSET,
-            delegate: "GPU",
-          },
-          runningMode: "IMAGE",
-          numFaces: 2,
-          minFaceDetectionConfidence: 0.55,
-          minFacePresenceConfidence: 0.55,
-          outputFaceBlendshapes: false,
-          outputFacialTransformationMatrixes: false,
-        }) as Promise<MediaPipeFaceLandmarker>;
-      },
-    );
+    landmarkerPromise = withMediaPipeConsoleErrorFilterAsync(async () => {
+      const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
+      const vision = await FilesetResolver.forVisionTasks(WASM_ASSET);
+      return FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: MODEL_ASSET,
+          delegate: "GPU",
+        },
+        runningMode: "IMAGE",
+        numFaces: 2,
+        minFaceDetectionConfidence: 0.55,
+        minFacePresenceConfidence: 0.55,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false,
+      }) as Promise<MediaPipeFaceLandmarker>;
+    });
   }
 
   return landmarkerPromise;
@@ -104,7 +137,7 @@ export async function detectFaceLandmarks(
   image: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement,
 ): Promise<NormalizedLandmark[]> {
   const landmarker = await loadFaceLandmarker();
-  const result = landmarker.detect(image);
+  const result = withMediaPipeConsoleErrorFilter(() => landmarker.detect(image));
   const faces = result.faceLandmarks ?? [];
 
   if (faces.length === 0) {
