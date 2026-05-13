@@ -7,9 +7,9 @@ It lets an adult user upload or capture a front-facing face photo, detects dense
 ## Safety and Privacy
 
 - Do not analyze children. The app requires an `18+` confirmation before upload or camera capture.
-- The app does not infer race, ethnicity, gender identity, health, personality, identity, or objective attractiveness.
+- The app does not infer race, ethnicity, gender identity, health, personality, identity, or social traits.
 - Photos are processed locally in the browser with MediaPipe and are not uploaded or stored by this MVP.
-- The report uses the label `Aesthetic balance estimate` and includes this disclaimer: `This is an experimental computer-vision estimate, not an objective measure of attractiveness.`
+- The report uses the label `Aesthetic Balance Score` and includes this disclaimer: `This score is a heuristic estimate of facial balance from a single photo. It is not an objective measure of attractiveness.`
 
 ## Features
 
@@ -62,4 +62,4 @@ types/
 
 MediaPipe Face Landmarker is loaded client-side. The model and WASM assets are fetched from the public MediaPipe/CDN URLs at runtime, so the first analysis can take a moment. Landmark indexes are grouped in `lib/faceLandmarks.ts`; the formulas in `lib/metrics.ts` are transparent approximations based on normalized landmark positions mapped onto image pixels.
 
-The metric formulas are intentionally conservative and photo-dependent. They are useful for an MVP visualization and structured report, not for scientific, medical, or objective attractiveness claims.
+The metric formulas are intentionally conservative and photo-dependent. They are useful for an MVP visualization and structured report, not for scientific, medical, or definitive personal judgments.

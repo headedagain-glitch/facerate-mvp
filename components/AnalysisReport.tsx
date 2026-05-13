@@ -1,9 +1,10 @@
 "use client";
 
 import { Download, FileJson, Info, ShieldCheck } from "lucide-react";
+import MetricDebugPanel from "@/components/MetricDebugPanel";
+import PhotoQualityWarnings from "@/components/PhotoQualityWarnings";
 import { generateLooksReport } from "@/lib/reportGenerator";
-import { formatRatio } from "@/lib/metrics";
-import type { FaceAnalysis, FaceMetrics } from "@/types/face";
+import type { FaceAnalysis, FaceScoreResult } from "@/types/face";
 
 type AnalysisReportProps = {
   analysis: FaceAnalysis | null;
@@ -26,23 +27,19 @@ function MetricRow({ label, value, hint }: { label: string; value: string; hint:
   );
 }
 
-function MetricsGrid({ metrics }: { metrics: FaceMetrics }) {
+function MetricsGrid({ metrics }: { metrics: FaceScoreResult }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-      <MetricRow label="Overall symmetry" value={percent(metrics.symmetryScore)} hint="Mirrored landmark distances from face center." />
-      <MetricRow label="Left/right balance" value={percent(metrics.leftRightBalance)} hint="Nose and feature center alignment." />
-      <MetricRow label="Face W/H ratio" value={formatRatio(metrics.faceWidthToHeightRatio)} hint="Face width divided by face height." />
-      <MetricRow label="Eye spacing ratio" value={formatRatio(metrics.eyeSpacingRatio)} hint="Inner-eye gap vs average eye width." />
-      <MetricRow label="Jaw / face width" value={formatRatio(metrics.jawToFaceWidthRatio)} hint="Jaw width relative to full face width." />
-      <MetricRow label="Nose / face width" value={formatRatio(metrics.noseToFaceWidthRatio)} hint="Nose base width relative to face width." />
-      <MetricRow label="Mouth / face width" value={formatRatio(metrics.mouthToFaceWidthRatio)} hint="Mouth width relative to face width." />
-      <MetricRow label="Cheekbone prominence" value={percent(metrics.cheekboneProminence)} hint="Cheek width compared with jaw width." />
-      <MetricRow label="Jawline definition" value={percent(metrics.jawlineDefinition)} hint="Approximate lower-face outline strength." />
-      <MetricRow
-        label="Facial thirds"
-        value={`${percent(metrics.facialThirds.balanceScore)} balance`}
-        hint={`${formatRatio(metrics.facialThirds.upper)} / ${formatRatio(metrics.facialThirds.middle)} / ${formatRatio(metrics.facialThirds.lower)}`}
-      />
+      <MetricRow label="Geometry" value={percent(metrics.geometryScore)} hint="Weighted symmetry, proportion, eye, nose-mouth, and lower-face score." />
+      <MetricRow label="Symmetry" value={percent(metrics.symmetryScore)} hint="Mirrored landmark distances and paired feature balance." />
+      <MetricRow label="Proportions" value={percent(metrics.proportionScore)} hint="Face shape, eye spacing, thirds, and nose-center bands." />
+      <MetricRow label="Jaw/chin balance" value={percent(metrics.jawChinBalanceScore)} hint="Jaw width and chin centering estimate." />
+      <MetricRow label="Eye-area balance" value={percent(metrics.eyeAreaBalanceScore)} hint="Eye width, openness, and symmetry estimate." />
+      <MetricRow label="Nose/mouth proportionality" value={percent(metrics.noseMouthProportionalityScore)} hint="Nose width, mouth width, and centering estimate." />
+      <MetricRow label="Photo quality" value={percent(metrics.photoQualityScore)} hint="Resolution, sharpness, lighting, crop, and centering." />
+      <MetricRow label="Pose" value={percent(metrics.poseScore)} hint="Roll, yaw, and pitch proxies from landmarks." />
+      <MetricRow label="Expression neutrality" value={percent(metrics.expressionNeutralityScore)} hint="Mouth openness and blendshape expression signals." />
+      <MetricRow label="Landmark reliability" value={percent(metrics.landmarkConfidenceScore)} hint="Finite landmark and topology plausibility checks." />
     </div>
   );
 }
@@ -69,12 +66,15 @@ export function exportCanvasPng() {
 
 export default function AnalysisReport({ analysis, status }: AnalysisReportProps) {
   const report = analysis ? generateLooksReport(analysis.metrics) : null;
+  const score = analysis?.metrics.finalAestheticBalanceScore ?? null;
+  const confidence = analysis?.metrics.confidenceScore ?? null;
+  const retakeRequired = analysis?.metrics.retakeRequired ?? false;
 
   return (
     <aside className="rounded-lg border border-line bg-panel">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div>
-          <h2 className="text-sm font-semibold text-white">Looks analysis report</h2>
+          <h2 className="text-sm font-semibold text-white">Aesthetic balance report</h2>
           <p className="text-xs text-slate-400">{status}</p>
         </div>
         <span className="rounded-md bg-mint/12 px-2.5 py-1 text-xs font-medium text-mint">Local</span>
@@ -84,8 +84,12 @@ export default function AnalysisReport({ analysis, status }: AnalysisReportProps
         <div className="rounded-lg border border-mint/25 bg-mint/10 p-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-mint">{report?.scoreLabel ?? "Aesthetic balance estimate"}</p>
-              <p className="mt-2 text-4xl font-semibold text-white">{report?.score ?? "--"}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-mint">{report?.scoreLabel ?? "Aesthetic Balance Score"}</p>
+              {retakeRequired ? (
+                <p className="mt-2 text-2xl font-semibold leading-tight text-white">Retake photo for accurate rating</p>
+              ) : (
+                <p className="mt-2 text-4xl font-semibold text-white">{score ?? "--"}</p>
+              )}
             </div>
             <ShieldCheck className="h-7 w-7 text-mint" />
           </div>
@@ -96,6 +100,16 @@ export default function AnalysisReport({ analysis, status }: AnalysisReportProps
 
         {analysis ? (
           <>
+            <div className="rounded-md border border-line bg-ink/35 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">Confidence</span>
+                <span className="text-sm font-semibold text-white">{Math.round(confidence ?? 0)} / 100</span>
+              </div>
+              <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                Confidence reflects photo quality, pose, expression neutrality, and landmark reliability.
+              </p>
+            </div>
+
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">Metrics</h3>
@@ -108,9 +122,8 @@ export default function AnalysisReport({ analysis, status }: AnalysisReportProps
             <ReportList title="Areas that may be improved" items={report?.improvementAreas ?? []} />
             <ReportList title="Grooming and style suggestions" items={report?.groomingSuggestions ?? []} />
 
-            {report && report.photoWarnings.length > 0 ? (
-              <ReportList title="Photo quality warnings" items={report.photoWarnings} tone="warning" />
-            ) : null}
+            <PhotoQualityWarnings warnings={analysis.metrics.warnings} />
+            <MetricDebugPanel metrics={analysis.metrics} />
 
             <div className="grid grid-cols-2 gap-2">
               <button

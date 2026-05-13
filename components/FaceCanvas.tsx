@@ -5,7 +5,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import {
   FACE_LANDMARK_GROUPS,
   buildMeasurementLines,
-  detectFaceLandmarks,
+  detectFace,
   mapLandmarkToPixel,
 } from "@/lib/faceLandmarks";
 import { calculateFaceMetrics } from "@/lib/metrics";
@@ -30,27 +30,13 @@ const groupColors: Record<string, string> = {
 };
 
 function warningFromError(error: unknown): PhotoWarning {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message === "NO_FACE") {
-    return {
-      code: "no-face",
-      label: "No face detected",
-      detail: "Use a clear, front-facing adult face photo.",
-    };
-  }
-
-  if (message === "MULTIPLE_FACES") {
-    return {
-      code: "multiple-faces",
-      label: "Multiple faces detected",
-      detail: "Upload a photo with only one visible face.",
-    };
-  }
+  const detail = error instanceof Error ? error.message : String(error);
 
   return {
-    code: "not-ready",
+    code: "MODEL_NOT_READY",
+    severity: "fatal",
     label: "Analysis failed",
-    detail: "The model could not finish detection. Try another image.",
+    detail: detail || "The model could not finish detection. Try another image.",
   };
 }
 
@@ -97,11 +83,19 @@ export default function FaceCanvas({ imageUrl, onAnalysis, onStatusChange }: Fac
         if (cancelled) return;
 
         imageRef.current = image;
-        const landmarks = await detectFaceLandmarks(image);
+        const detection = await detectFace(image);
         if (cancelled) return;
 
-        const measurementLines = buildMeasurementLines(landmarks, image.naturalWidth, image.naturalHeight);
-        const metrics = calculateFaceMetrics(landmarks, image.naturalWidth, image.naturalHeight);
+        const metrics = calculateFaceMetrics({
+          detection,
+          image,
+          imageWidth: image.naturalWidth,
+          imageHeight: image.naturalHeight,
+        });
+        const landmarks = detection.landmarks ?? [];
+        const measurementLines = detection.landmarks
+          ? buildMeasurementLines(detection.landmarks, image.naturalWidth, image.naturalHeight)
+          : [];
         const analysis: FaceAnalysis = {
           landmarks,
           metrics,
@@ -109,9 +103,17 @@ export default function FaceCanvas({ imageUrl, onAnalysis, onStatusChange }: Fac
           analyzedAt: new Date().toISOString(),
         };
 
-        drawCanvas(image, landmarks, analysis);
+        const fatalWarning = metrics.warnings.find((warning) => warning.severity === "fatal") ?? null;
+        setError(fatalWarning);
+
+        if (detection.landmarks) {
+          drawCanvas(image, detection.landmarks, analysis);
+        } else {
+          drawImageOnly(image);
+        }
+
         onAnalysis(analysis);
-        onStatusChange?.("Analysis complete");
+        onStatusChange?.(metrics.retakeRequired ? "Retake photo for accurate rating" : "Analysis complete");
       } catch (cause) {
         if (cancelled) return;
         const warning = warningFromError(cause);
