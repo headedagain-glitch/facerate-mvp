@@ -106,7 +106,12 @@ function calculateLandmarkConfidence(
     distance(point(KEY_LANDMARKS.topFace), point(KEY_LANDMARKS.chin)) > 0,
   ];
   const topologyScore = (checks.filter(Boolean).length / checks.length) * 100;
-  const landmarkConfidenceScore = clamp(0.35 * finiteScore + 0.25 * topologyScore + 0.2 * photoMarginScore + 0.2 * 85);
+  // MediaPipe web result does not expose a simple per-face landmark confidence here.
+  // This is a proxy based on topology, finite coordinates, and crop margin.
+  const fallbackPresenceScore = 85;
+  const landmarkConfidenceScore = clamp(
+    0.35 * finiteScore + 0.25 * topologyScore + 0.2 * photoMarginScore + 0.2 * fallbackPresenceScore,
+  );
   const warnings: PhotoWarning[] = [];
 
   if (finiteScore < 95 || topologyScore < 80) {
@@ -151,7 +156,7 @@ function calculateGeometryScores(landmarks: NormalizedLandmark[], imageWidth: nu
   const cheekboneWidth = faceWidth;
   const noseWidth = distance(point(KEY_LANDMARKS.noseLeft), point(KEY_LANDMARKS.noseRight));
   const mouthWidth = distance(point(KEY_LANDMARKS.mouthLeft), point(KEY_LANDMARKS.mouthRight));
-  const faceCenterX = average([point(KEY_LANDMARKS.noseBridge).x, point(KEY_LANDMARKS.noseTip).x, chin.x]);
+  const faceCenterX = midpoint(leftFace, rightFace).x;
   const faceWidthToHeightRatio = faceWidth / Math.max(1, faceHeight);
   const faceWidthToHeightScore = bandScore(faceWidthToHeightRatio, 0.58, 0.78, 0.48, 0.92);
   const ipdToFaceWidthRatio = interpupillaryDistance / Math.max(1, faceWidth);
@@ -287,7 +292,7 @@ export function calculateFaceMetrics({
   const photoQuality = calculatePhotoQuality({ landmarks, image, imageWidth, imageHeight, overrides: photoQualityOverrides });
   const photoMarginScore = clamp(((photoQuality.minMargin - 0.015) / 0.08) * 100);
   const landmarkConfidence = calculateLandmarkConfidence(landmarks, photoMarginScore, imageWidth, imageHeight);
-  const pose = calculatePoseScore(landmarks, imageWidth, imageHeight);
+  const pose = calculatePoseScore(landmarks, imageWidth, imageHeight, detection.transformationMatrix);
   const expression = calculateExpressionScore(landmarks, detection.blendshapes, imageWidth, imageHeight);
   const geometry = calculateGeometryScores(landmarks, imageWidth, imageHeight);
   const warnings = mergeWarnings([
@@ -351,6 +356,11 @@ export function calculateFaceMetrics({
       rollDeg: pose.rollDeg,
       yawProxy: pose.yawProxy,
       pitchProxy: pose.pitchProxy,
+      matrixYawDeg: pose.matrixYawDeg ?? "n/a",
+      matrixPitchDeg: pose.matrixPitchDeg ?? "n/a",
+      matrixRollDeg: pose.matrixRollDeg ?? "n/a",
+      usedTransformationMatrix: pose.usedTransformationMatrix,
+      eyeWidthAsymmetry: pose.eyeWidthAsymmetry,
       mouthOpenRatio: expression.mouthOpenRatio,
       jawOpen: expression.jawOpen,
       smile: expression.smile,

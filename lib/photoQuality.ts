@@ -67,6 +67,33 @@ export function laplacianVariance(gray: Uint8ClampedArray, width: number, height
   return average(values.map((value) => (value - mean) ** 2));
 }
 
+export function cropLaplacianVariance(
+  gray: Uint8ClampedArray,
+  imageWidth: number,
+  xMin: number,
+  xMax: number,
+  yMin: number,
+  yMax: number,
+): number {
+  const width = xMax - xMin + 1;
+  const height = yMax - yMin + 1;
+
+  if (width < 8 || height < 8) return 0;
+
+  const values: number[] = [];
+
+  for (let y = yMin + 1; y < yMax; y += 1) {
+    for (let x = xMin + 1; x < xMax; x += 1) {
+      const i = y * imageWidth + x;
+      const lap = gray[i - imageWidth] + gray[i - 1] - 4 * gray[i] + gray[i + 1] + gray[i + imageWidth];
+      values.push(lap);
+    }
+  }
+
+  const mean = average(values);
+  return average(values.map((value) => (value - mean) ** 2));
+}
+
 function luminance(r: number, g: number, b: number): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
@@ -126,7 +153,7 @@ function sampleImageStats(image: ImageLike | undefined, bbox: LandmarkBoundingBo
     const lightingDiff = Math.abs(leftMean - rightMean) / Math.max(1, meanLuminance);
 
     return {
-      blurVariance: laplacianVariance(gray, size, size),
+      blurVariance: cropLaplacianVariance(gray, size, xMin, xMax, yMin, yMax),
       meanLuminance,
       luminanceStd,
       lightingDiff,
